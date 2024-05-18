@@ -219,7 +219,7 @@
     "template": "index.html",
     "router": {
       "mode": "hash",
-      "base": "/uni/"
+      "base": "/"
     },
     "sdkConfigs": {
       "maps": {}

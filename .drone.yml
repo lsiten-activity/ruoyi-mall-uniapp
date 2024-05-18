@@ -1,0 +1,96 @@
+kind: pipeline
+type: docker
+name: 前端node项目部署
+
+environment:
+  APP_PORT: 16162
+  CURRENT_NODE_VERSION: "20.8.0"  # 确保环境变量在此步骤中生
+
+volumes:
+  - name: npm-cache
+    host:
+      path: /volume2/docker/drone/server-01/drone-runner-docker/npm-cache
+  - name: log-cache
+    host:
+      path: /volume2/docker/drone/server-01/drone-runner-docker/log-cache
+  - name: build-dist
+    host:
+      path: /volume2/docker/drone/server-01/drone-runner-docker/apps/node/build-dist
+  - name: docker
+    host:
+      path: /var/run/docker.sock
+
+steps:
+    - name: 编译
+      image: node:20.8.0
+      pull: if-not-exists
+      volumes:
+        - name: npm-cache
+          path: /cache/npm
+        - name: build-dist
+          path: /app/build
+      commands:
+        - export NODE_GLOBAL_PATH=/cache/npm/$${CURRENT_NODE_VERSION}/node_global
+        - export NODE_CACHE_PATH=/cache/npm/$${CURRENT_NODE_VERSION}/node_cache
+        - echo $NODE_GLOBAL_PATH
+        - echo $NODE_CACHE_PATH
+        - mkdir -p $NODE_GLOBAL_PATH && mkdir -p $NODE_CACHE_PATH
+        - node -v
+        # - npm config set registry https://registry.npmmirror.com # 淘宝源
+        # - rm -rf ./node_modules && rm -rf ./yarn.lock
+        - rm -rf ./node_modules
+        - npm config set prefix $NODE_GLOBAL_PATH
+        - npm config set cache $NODE_CACHE_PATH
+        - npm config get prefix
+        - npm config get cache
+        - npm install yarn -g
+        - yarn config set ignore-engines true
+        - yarn
+        - yarn -v
+        - yarn build:prod
+        - mkdir -p /app/build/${DRONE_REPO_NAME} && rm -rf /app/build/${DRONE_REPO_NAME}/*
+        - mkdir -p /app/build/${DRONE_REPO_NAME}/dist && cp -R ./dist/* /app/build/${DRONE_REPO_NAME}/dist/
+        - mkdir -p /app/build/${DRONE_REPO_NAME} && cp -R ./Dockerfile /app/build/${DRONE_REPO_NAME}/
+        - mkdir -p /app/build/${DRONE_REPO_NAME} && cp -R ./nginx.conf /app/build/${DRONE_REPO_NAME}/default.conf
+        - mkdir -p /app/build/${DRONE_REPO_NAME} && cp -R ./run-docker.sh /app/build/${DRONE_REPO_NAME}/
+    - name: 部署
+      image: plugins/docker
+      volumes:
+        - name: log-cache
+          path: /cache/log
+        - name: build-dist
+          path: /app/build
+        - name: docker
+          path: /var/run/docker.sock # 挂载宿主机的docker
+      settings:
+        dockerfile: /app/build/${DRONE_REPO_NAME}/Dockerfile
+      commands:
+        - mkdir -p /cache/log/${DRONE_REPO_NAME}
+        - cd /app/build/${DRONE_REPO_NAME}/
+        - ls -al /app/build/${DRONE_REPO_NAME}/
+        - chmod +x run-docker.sh
+        - /app/build/${DRONE_REPO_NAME}/run-docker.sh
+        - docker ps
+    - name: 构建通知
+      image: plugins/webhook
+      pull: if-not-exists
+      settings:
+        urls: https://oapi.dingtalk.com/robot/send?access_token=d23bb0bb02a1253f5fa8e5be917fb8f0798580df63dcf83f6a97ef08b9fee3e5
+        content_type: application/json
+        template:
+          {
+            "msgtype": "markdown",
+            "markdown": {
+              "title": "构建通知",
+              "text": "{{#success build.status}}{{else}}{{/success}}**{{repo.owner}}/{{repo.name}}**\n
+> **构建结果**: {{build.status}}\n\n
+> **构建详情**: [点击查看]({{build.link}})\n\n
+> **代码分支**: {{build.branch}}\n\n
+> **提交标识**: {{build.commit}}\n\n
+> **提交发起**: {{build.author}}\n\n
+> **提交信息**: {{build.message}}"
+            }
+          }
+trigger:
+  branch:
+    - master

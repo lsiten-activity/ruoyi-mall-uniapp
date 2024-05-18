@@ -49,7 +49,7 @@ steps:
         - yarn -v
         - yarn build:h5
         - mkdir -p /app/build/${DRONE_REPO_NAME} && rm -rf /app/build/${DRONE_REPO_NAME}/*
-        - mkdir -p /app/build/${DRONE_REPO_NAME}/dist && cp -R ./dist/build/h5 /app/build/${DRONE_REPO_NAME}/dist/
+        - mkdir -p /app/build/${DRONE_REPO_NAME}/dist && cp -R ./dist/build/h5/* /app/build/${DRONE_REPO_NAME}/dist/
         - mkdir -p /app/build/${DRONE_REPO_NAME} && cp -R ./.droneconfig/* /app/build/${DRONE_REPO_NAME}/
 
     - name: 部署
